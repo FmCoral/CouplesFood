@@ -1,7 +1,14 @@
 #!/bin/sh
-# 全量备份：数据库 + 图片，打包成一个 tar.gz，只保留最近 N 份
-# 由 docker compose 的 backup 服务每天 03:00 调用；也可手动执行：
-#   docker compose exec backup /bin/sh /usr/local/bin/backup.sh
+# 全量备份：数据库 + schema + 图片，打包成一个 tar.gz，只保留最近 N 份
+#
+# 设计说明：本脚本「只做一次备份然后退出」，不做循环调度。
+# 调度交给宿主机 cron（见 docker-compose.yml 的注释），原因：
+#   ① postgres:16-alpine 是 busybox，`date -d 'tomorrow 03:00'` 不被支持，
+#      在容器内做睡眠调度会算出负数并进入死循环；
+#   ② 容器只跑单次任务，`docker compose run --rm backup` 才能干净地交互执行。
+#
+# 手动执行：
+#   docker compose run --rm backup
 set -eu
 
 : "${PGHOST:=db}"
@@ -16,7 +23,6 @@ WORK="/tmp/backup-${STAMP}"
 mkdir -p "$WORK"
 
 log() { echo "[backup $(date '+%F %T')] $*"; }
-
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT INT TERM
 
@@ -30,7 +36,7 @@ else
   exit 1
 fi
 
-# ---------- 2. 纯文本 schema，便于肉眼比对/应急 ----------
+# ---------- 2. 纯文本 schema，便于肉眼比对 / 应急 ----------
 pg_dump --no-owner --no-acl --schema-only -f "$WORK/schema.sql" || log "schema 导出失败（忽略）"
 
 # ---------- 3. 图片 ----------
@@ -42,18 +48,21 @@ else
 fi
 
 # ---------- 4. 汇总 ----------
+mkdir -p "$BACKUP_DIR_OVERRIDE"
 PKG="${BACKUP_DIR_OVERRIDE}/couple-${STAMP}.tar.gz"
-tar -czf "$PKG" -C "$WORK" . 
+tar -czf "$PKG" -C "$WORK" .
 chmod 600 "$PKG" 2>/dev/null || true
 log "备份包生成：$PKG ($(du -h "$PKG" | cut -f1))"
 
 # ---------- 5. 只保留最近 N 份 ----------
-# 按文件名倒序（时间戳天然可比），删掉 N 之后的
-ls -1t "${BACKUP_DIR_OVERRIDE}"/couple-*.tar.gz 2>/dev/null \
-  | tail -n +"$((BACKUP_KEEP + 1))" \
-  | while read -r old; do
-      rm -f "$old" && log "清理旧备份：$(basename "$old")"
-    done
+# 按修改时间倒序（不依赖文件名解析），删掉 N 之后的
+count=0
+for old in $(ls -1t "$BACKUP_DIR_OVERRIDE"/couple-*.tar.gz 2>/dev/null); do
+  count=$((count + 1))
+  if [ "$count" -gt "$BACKUP_KEEP" ]; then
+    rm -f "$old" && log "清理旧备份：$(basename "$old")"
+  fi
+done
 
-log "完成，当前保留："
-ls -lh "${BACKUP_DIR_OVERRIDE}"/couple-*.tar.gz 2>/dev/null | awk '{print "  " $9 "  " $5}'
+log "完成，当前保留 $BACKUP_KEEP 份以内："
+ls -lh "$BACKUP_DIR_OVERRIDE"/couple-*.tar.gz 2>/dev/null | awk '{print "  " $9 "  " $5}' || true
