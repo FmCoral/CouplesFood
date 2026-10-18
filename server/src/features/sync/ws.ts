@@ -26,7 +26,7 @@ export default async function wsRoutes(app: FastifyInstance) {
   });
   app.addHook('onClose', async () => unsubscribe());
 
-  app.get('/ws', { websocket: true }, (socket, req) => {
+  app.get('/api/ws', { websocket: true }, (socket, req) => {
     let coupleId: string | null = null;
     let userId: string | null = null;
     let alive = true;
