@@ -53,7 +53,11 @@ export default async function uploadRoutes(app: FastifyInstance) {
     await writeFile(abs, buf);
 
     const imageKey = rel;
-    const imageUrl = `${config.MEDIA_BASE_URL || ''}${config.MEDIA_BASE_PATH}/${rel}`;
+    // MEDIA_BASE_URL 只填域名（如 https://food.fmcoral.com），
+    // 路径前缀始终由 MEDIA_BASE_PATH 提供。两者都带 /media 会拼成 /media/media/xxx。
+    const base = (config.MEDIA_BASE_URL || '').replace(/\/+$/, '');
+    const basePath = config.MEDIA_BASE_PATH.replace(/\/+$/, '');
+    const imageUrl = `${base}${basePath}/${rel}`;
     reply.code(200);
     return { data: { imageKey, imageUrl, size: buf.length } };
   });
