@@ -17,7 +17,6 @@ class Session {
   static const _kNickname = 'nickname';
   static const _kPhone = 'phone';
   static const _kIsAdmin = 'is_admin';
-  static const _kBaseUrl = 'base_url';
   static const _kDeviceId = 'device_id';
 
   static const _secure = FlutterSecureStorage(
@@ -36,8 +35,9 @@ class Session {
   /// 当前设备标识：注册/登录时上传，刷新令牌时绑定
   String deviceId = '';
 
-  /// 服务器地址（可改）
-  String baseUrl = '';
+  // 服务器地址不在这里：见 AppConfig.defaultBaseUrl。
+  // 地址是编译期常量，App 内不提供任何修改入口——
+  // 换服务器只改 DNS 解析，用户无感，也不存在"被改到假服务器"的风险。
 
   bool get isLoggedIn => _access != null && _access!.isNotEmpty;
   String? get accessToken => _access;
@@ -81,7 +81,6 @@ class Session {
     nickname = _prefs!.getString(_kNickname) ?? '';
     phone = _prefs!.getString(_kPhone) ?? '';
     isAdmin = _prefs!.getBool(_kIsAdmin) ?? false;
-    baseUrl = _prefs!.getString(_kBaseUrl) ?? '';
     deviceId = _prefs!.getString(_kDeviceId) ?? '';
 
     // 设备标识只生成一次，重装才会变（后端用它做刷新令牌绑定）
@@ -96,11 +95,6 @@ class Session {
     final rnd = Random.secure();
     final suffix = List.generate(8, (_) => rnd.nextInt(36).toRadixString(36)).join();
     return 'and-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-$suffix';
-  }
-
-  Future<void> setBaseUrl(String url) async {
-    baseUrl = url.trim().replaceAll(RegExp(r'/+$'), '');
-    await _prefs?.setString(_kBaseUrl, baseUrl);
   }
 
   Future<void> clear() async {
@@ -126,7 +120,6 @@ class Session {
         'userId': userId,
         'nickname': nickname,
         'isAdmin': isAdmin,
-        'baseUrl': baseUrl,
         'deviceId': deviceId,
       };
 

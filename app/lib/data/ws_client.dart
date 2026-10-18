@@ -42,8 +42,8 @@ class WsClient {
     _reconnect?.cancel();
     disconnect();
 
-    final base = session.baseUrl.isNotEmpty ? session.baseUrl : AppConfig.defaultBaseUrl;
-    final wsBase = base.replaceFirst(RegExp(r'^http'), 'ws').replaceAll(RegExp(r'/+$'), '');
+    final wsBase =
+        AppConfig.defaultBaseUrl.replaceFirst(RegExp(r'^http'), 'ws');
     final uri = Uri.parse('$wsBase${AppConfig.wsPath}');
 
     try {

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../core/config.dart';
 import '../state/app_state.dart';
 import '../ui/common.dart';
 
@@ -62,54 +61,6 @@ class _LoginPageState extends State<LoginPage> {
 
     if (mounted) setState(() => _busy = false);
     if (!ok) return;
-  }
-
-  Future<void> _openServerSettings() async {
-    final s = context.read<AppState>();
-    final ctrl = TextEditingController(
-      text: s.session.baseUrl.isEmpty ? AppConfig.defaultBaseUrl : s.session.baseUrl,
-    );
-    final r = await showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('服务器地址'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('换服务器时只改这里，不用重装 App。',
-                style: TextStyle(fontSize: 13, height: 1.5)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              decoration: const InputDecoration(
-                hintText: 'https://food.fmcoral.com',
-                isDense: true,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-            style: FilledButton.styleFrom(minimumSize: const Size(88, 42)),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (r == null || r.isEmpty) return;
-
-    var url = r;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = 'https://$url';
-    }
-    await s.session.setBaseUrl(url);
-    if (mounted) context.snack('已保存：$url');
   }
 
   @override
@@ -236,16 +187,6 @@ class _LoginPageState extends State<LoginPage> {
                                 _formKey.currentState?.reset();
                               }),
                       child: Text(_isRegister ? '已有账号？去登录' : '还没有账号？去注册'),
-                    ),
-
-                    const SizedBox(height: 24),
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: _busy ? null : _openServerSettings,
-                        icon: Icon(Icons.dns_outlined, size: 16, color: scheme.onSurfaceVariant),
-                        label: Text('服务器设置',
-                            style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
-                      ),
                     ),
                   ],
                 ),

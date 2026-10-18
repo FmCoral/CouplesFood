@@ -191,12 +191,6 @@ class ProfilePage extends StatelessWidget {
               onTap: () => _changePassword(context),
             ),
             _Row(
-              icon: Icons.dns_outlined,
-              label: '服务器地址',
-              trailing: _hostOf(s),
-              onTap: () => _showServerInfo(context),
-            ),
-            _Row(
               icon: Icons.info_outline,
               label: '版本',
               trailing: AppConfig.appVersion,
@@ -252,40 +246,6 @@ class ProfilePage extends StatelessWidget {
     if (days <= 0) return '今天刚绑定';
     if (days < 30) return '已在一起 $days 天';
     return '已在一起 ${(days / 30).floor()} 个月';
-  }
-
-  static String _hostOf(AppState s) {
-    final b = s.session.baseUrl.isNotEmpty ? s.session.baseUrl : AppConfig.defaultBaseUrl;
-    return b.replaceFirst(RegExp(r'^https?://'), '');
-  }
-
-  static Future<void> _showServerInfo(BuildContext context) async {
-    final s = context.read<AppState>();
-    await showDialog<void>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('服务器'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(_hostOf(s), style: const TextStyle(fontSize: 14)),
-            const SizedBox(height: 10),
-            Text(
-              'App 里写死的是域名，换服务器时只要改 DNS 解析到新 IP，'
-              '已安装的 App 不用重装。',
-              style: TextStyle(
-                  fontSize: 12.5,
-                  height: 1.6,
-                  color: Theme.of(c).colorScheme.onSurfaceVariant),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('知道了')),
-        ],
-      ),
-    );
   }
 
   static Future<void> _changePassword(BuildContext context) async {

@@ -26,10 +26,8 @@ class ApiClient {
   void Function()? onSessionRefreshed;
   void Function()? onSessionExpired;
 
-  String get _base {
-    final b = session.baseUrl.isNotEmpty ? session.baseUrl : AppConfig.defaultBaseUrl;
-    return b.replaceAll(RegExp(r'/+$'), '');
-  }
+  /// 地址固定为编译期常量，不接受运行时输入
+  String get _base => AppConfig.defaultBaseUrl;
 
   Uri _uri(String path, [Map<String, dynamic>? query]) {
     final q = query?.entries
