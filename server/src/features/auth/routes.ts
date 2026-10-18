@@ -157,6 +157,18 @@ export default async function authRoutes(app: FastifyInstance) {
     return { data: { ok: true, reloginRequired: true } };
   });
 
+  // ---------------- 修改昵称 ----------------
+  // 不做短信验证，改昵称是低风险操作；但手机号不可改（它是登录凭据）
+  app.patch('/api/auth/me', { preHandler: authenticate }, async (req) => {
+    const parsed = z.object({
+      nickname: z.string().trim().min(1, '昵称不能为空').max(20, '昵称最多 20 字'),
+    }).safeParse(req.body);
+    if (!parsed.success) throw new Validation(zodIssues(parsed.error));
+    const u = me(req);
+    await pool.query('UPDATE users SET nickname = $1 WHERE id = $2', [parsed.data.nickname, u.userId]);
+    return { data: { nickname: parsed.data.nickname } };
+  });
+
   // ---------------- 当前用户 ----------------
   app.get('/api/auth/me', { preHandler: authenticate }, async (req) => {
     const u = me(req);

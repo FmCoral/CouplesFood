@@ -1,0 +1,43 @@
+name: couple_menu
+description: "情侣点菜 · 只给两个人的菜单"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # 网络
+  http: ^1.2.2
+  web_socket_channel: ^3.0.1
+
+  # 本地存储：token 用安全存储，业务数据用 SQLite
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.3.3
+  sqflite: ^2.4.1
+  path: ^1.9.0
+  path_provider: ^2.1.5
+
+  # 图片
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.3.0
+  cached_network_image: ^3.4.1
+
+  # 状态与工具
+  provider: ^6.1.2
+  intl: ^0.19.0
+  uuid: ^4.5.1
+  connectivity_plus: ^6.1.0
+  package_info_plus: ^8.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
