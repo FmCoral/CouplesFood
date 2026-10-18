@@ -9,6 +9,7 @@ import { config } from './config.js';
 import { AppError, problemBody } from './errors.js';
 import { dbHealthy, pool } from './db.js';
 import { ensureAdmin } from './shared/presets.js';
+import { runMigrations } from './shared/migrate.js';
 import authRoutes from './features/auth/routes.js';
 import coupleRoutes from './features/couple/routes.js';
 import dishRoutes from './features/dish/routes.js';
@@ -137,6 +138,9 @@ await app.register(wsRoutes);
 
 // ---------- 启动 ----------
 async function start() {
+  // 建表 → 建超管 → 监听。顺序不能变：ensureAdmin 依赖 users 表。
+  await runMigrations(app.log);
+
   // 超管必须在监听前就绪，否则前端首屏可能 401
   const admin = await ensureAdmin();
   app.log.info({ created: admin.created }, admin.created ? '超管账号已创建' : '超管账号已存在');
