@@ -6,7 +6,7 @@ import websocket from '@fastify/websocket';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { config } from './config.js';
-import { AppError, problemBody } from './errors.js';
+import { AppError, BadRequest, problemBody } from './errors.js';
 import { dbHealthy, pool } from './db.js';
 import { ensureAdmin } from './shared/presets.js';
 import { runMigrations } from './shared/migrate.js';
@@ -56,6 +56,22 @@ await app.register(cors, {
 });
 await app.register(multipart, { limits: { fileSize: config.maxUploadBytes, files: 1, fields: 5 } });
 await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
+
+// 兼容旧客户端（v1.0.1 及更早）：POST 声明了 application/json 却没带 body。
+// Fastify 默认会抛 FST_ERR_CTP_EMPTY_JSON_BODY → 400「请求体格式错误」，
+// 挡住所有无 body 的写接口：/couples/invite、/auth/logout、
+// /couples/dissolve/:id/{approve,reject,withdraw}。
+// 空 body 一律按 {} 处理；真正缺字段的接口交给 zod 返回 422，提示更明确。
+app.removeContentTypeParser('application/json');
+app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+  const raw = body == null ? '' : String(body);
+  if (raw.trim() === '') return done(null, {});
+  try {
+    done(null, JSON.parse(raw) as unknown);
+  } catch {
+    done(new BadRequest('请求体格式错误'), undefined);
+  }
+});
 
 // 图片静态服务：文件名是 UUID，内容不变 → 长缓存
 await app.register(fastifyStatic, {
