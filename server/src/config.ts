@@ -33,7 +33,14 @@ const schema = z.object({
 
   MEDIA_ROOT: z.string().default('/data/couple/images'),
   MEDIA_BASE_PATH: z.string().default('/media'),
-  MEDIA_BASE_URL: z.string().default(''),
+  // 只填域名，如 https://food.fmcoral.com；留空则返回相对路径。
+  // 填成 https://xxx.com/media 会和 MEDIA_BASE_PATH 拼成 /media/media/ 导致图片 404。
+  MEDIA_BASE_URL: z
+    .string()
+    .default('')
+    .refine((v) => !v.endsWith('/media') && !v.endsWith('/media/'), {
+      message: 'MEDIA_BASE_URL 只填域名（如 https://food.fmcoral.com），不要带 /media —— 路径前缀由 MEDIA_BASE_PATH 负责',
+    }),
   MAX_UPLOAD_MB: z.coerce.number().default(5),
 
   BACKUP_DIR: z.string().default('/data/couple/backup'),
