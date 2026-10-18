@@ -23,6 +23,19 @@ async function call(method, path, body, token, extraHeaders = {}) {
 }
 
 const rnd = () => String(Math.floor(Math.random() * 1e8)).padStart(8, '0');
+
+/** 打印汇总并退出。中间提前结束的分支也走这里，保证结果一定被输出 */
+function summarize() {
+  console.log(`\n${'='.repeat(60)}`);
+  if (failures.length === 0) {
+    console.log(`\x1b[32m全部通过：${pass} 项\x1b[0m`);
+  } else {
+    console.log(`\x1b[31m失败 ${failures.length} 项 / 通过 ${pass} 项\x1b[0m`);
+    failures.forEach((f) => console.log('  ✗ ' + f));
+  }
+  console.log('='.repeat(60));
+  process.exit(failures.length ? 1 : 0);
+}
 const jwtClaims = (t) => JSON.parse(Buffer.from(String(t).split('.')[1], 'base64url').toString('utf8'));
 const uniqPhone = () => '138' + rnd();
 
@@ -329,12 +342,23 @@ async function main() {
 
   // ========== 13. 超管 ==========
   section('13. 超管');
+  // 超管凭据必须显式传入，不猜默认值：
+  // .env.example 里 ADMIN_PASSWORD 是 CHANGE_ME_*，部署时一定会被改掉，
+  // 硬编码一个默认值只会在别人机器上必然失败，还会把真实口令写进仓库。
+  const adminPhone = process.env.ADMIN_PHONE;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPhone || !adminPassword) {
+    failures.push('第 13 节跳过：未设置 ADMIN_PHONE / ADMIN_PASSWORD');
+    console.log('  \x1b[33m!\x1b[0m 跳过超管测试 —— 请用 ADMIN_PHONE=... ADMIN_PASSWORD=... 重新运行');
+    return summarize();
+  }
+
   const adminLogin = await call('POST', '/api/auth/login', {
-    phone: process.env.ADMIN_PHONE ?? '18756459919',
-    password: process.env.ADMIN_PASSWORD ?? 'Tao00328',
+    phone: adminPhone,
+    password: adminPassword,
     deviceId: 'dev-admin01',
   });
-  ok(adminLogin.status === 200 && adminLogin.j.data.isAdmin === true, '超管登录，isAdmin=true');
+  ok(adminLogin.status === 200 && adminLogin.j?.data?.isAdmin === true, '超管登录，isAdmin=true', adminLogin.j);
   const adminToken = adminLogin.j.data.accessToken;
 
   const adminMe = await call('GET', '/api/couples/me', null, adminToken);
@@ -395,15 +419,7 @@ async function main() {
   ok(emptyJson.status === 400, '空 body + JSON header → 400 而非 500');
 
   // 汇总
-  console.log(`\n${'='.repeat(60)}`);
-  if (failures.length === 0) {
-    console.log(`\x1b[32m全部通过：${pass} 项\x1b[0m`);
-  } else {
-    console.log(`\x1b[31m失败 ${failures.length} 项 / 通过 ${pass} 项\x1b[0m`);
-    failures.forEach((f) => console.log('  ✗ ' + f));
-  }
-  console.log('='.repeat(60));
-  process.exit(failures.length ? 1 : 0);
+  summarize();
 }
 
 main().catch((e) => {
