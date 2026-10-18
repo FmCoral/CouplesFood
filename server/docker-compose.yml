@@ -36,7 +36,9 @@ services:
       - -c
       - log_min_duration_statement=800
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
+      # 数据放宿主机 /data/couple/pgdata，与代码目录解耦：
+      # 重新 clone / 换分支都不会碰到数据
+      - /data/couple/pgdata:/var/lib/postgresql/data
     ports:
       # 仅本机可连（运维排查用），不暴露公网；避开宿主机 MySQL 3306
       - "127.0.0.1:5433:5432"
@@ -54,8 +56,10 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      # 上下文是仓库根目录：Dockerfile 需要 COPY docs/schema.sql，
+      # 保证建表脚本只有一份真相源（docs/ 下那份）
+      context: ..
+      dockerfile: server/Dockerfile
     restart: unless-stopped
     mem_limit: 320m
     memswap_limit: 600m
@@ -73,8 +77,8 @@ services:
       TZ: Asia/Shanghai
       NODE_OPTIONS: --max-old-space-size=256
     volumes:
-      - ./images:/data/images
-      - ./backup:/data/backup
+      - /data/couple/images:/data/images
+      - /data/couple/backup:/data/backup
     ports:
       - "127.0.0.1:3000:3000"
     logging:
@@ -83,15 +87,16 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # 备份：每天 03:00 跑一次，全量导出 + 图片打包，只保留 3 份
-  # 用独立小容器而不是宿主机 cron，迁移时不丢任务
+  # 备份：单次执行容器，跑完即退出（不做循环调度）。
+  #
+  # 为什么调度放在宿主机 cron 而不是容器内：postgres:16-alpine 是 busybox，
+  # `date -d 'tomorrow 03:00'` 不被支持，容器内算下一次触发时间会得到负数，
+  # 进而 sleep 失败 → 死循环 → 一秒刷一个备份包把磁盘写满。
+  # 宿主机 Alibaba Cloud Linux 3 的 GNU date 可靠，cron 一行就够：
+  #   0 3 * * * cd /data/couple/app/server && docker compose run --rm backup >> /var/log/couple-backup.log 2>&1
   backup:
     image: postgres:16-alpine
-    restart: unless-stopped
     mem_limit: 96m
-    depends_on:
-      db:
-        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -100,21 +105,15 @@ services:
       PGDATABASE: couple
       PGPASSWORD: ${POSTGRES_PASSWORD:?缺少 POSTGRES_PASSWORD}
       BACKUP_KEEP: ${BACKUP_KEEP:-3}
+      BACKUP_DIR_OVERRIDE: /backup
+      IMAGE_DIR: /images
       TZ: Asia/Shanghai
     volumes:
-      - ./backup:/backup
-      - ./images:/images:ro
+      - /data/couple/backup:/backup
+      - /data/couple/images:/images:ro
       - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        apk add --no-cache tzdata >/dev/null 2>&1 || true
-        while true; do
-          now=$$(date +%s)
-          next=$$(date -d 'tomorrow 03:00' +%s)
-          sleep $$(( next - now ))
-          /bin/sh /usr/local/bin/backup.sh || echo "[backup] failed at $$(date)"
-        done
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup.sh"]
+    restart: "no"
     logging:
       driver: json-file
       options:
