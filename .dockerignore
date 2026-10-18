@@ -1,0 +1,15 @@
+# 构建上下文是仓库根目录（server/Dockerfile 要 COPY docs/schema.sql），
+# 这里排除掉一切和构建无关的大目录，避免每次 build 都传几百 MB。
+.git
+.gitignore
+.vscode
+app
+docs/*.md
+README.md
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+**/.DS_Store
