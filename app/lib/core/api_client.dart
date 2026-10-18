@@ -61,7 +61,12 @@ class ApiClient {
   }) async {
     final uri = _uri(path, query);
     final headers = <String, String>{
-      'Content-Type': 'application/json; charset=utf-8',
+      // 无 body 时**不能**声明 application/json：
+      // 空 body + JSON 头会让 Fastify 抛 FST_ERR_CTP_EMPTY_JSON_BODY，
+      // 后端统一映射成 400「请求体格式错误」。
+      // 受影响的无 body 写接口：/auth/logout、/couples/invite、
+      // /couples/dissolve/:id/{approve,reject,withdraw}
+      if (body != null) 'Content-Type': 'application/json; charset=utf-8',
       if (session.accessToken != null) 'Authorization': 'Bearer ${session.accessToken}',
     };
 
