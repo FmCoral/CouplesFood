@@ -1,0 +1,21 @@
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+.gradle/
+*.iml
+.idea/
+local.properties
+
+# 环境与密钥
+.env
+.env.*
+!.env.example
+
+# 日志
+*.log
+npm-debug.log*
+
+# 系统
+.DS_Store
+Thumbs.db
