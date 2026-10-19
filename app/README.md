@@ -73,10 +73,10 @@ debug 签名——能装能跑，但**不能覆盖升级已装的正式版**（�
 ### 用原来的密钥（要升级线上已装版本）
 
 线上版本用的密钥没有放进仓库（私钥入库等于公开）。找发布者要
-`情侣点菜-签名密钥备份包.zip`，解开后：
+`食在有你-签名密钥备份包.zip`，解开后：
 
 ```bash
-unzip 情侣点菜-签名密钥备份包.zip -d /tmp/key
+unzip 食在有你-签名密钥备份包.zip -d /tmp/key
 cp /tmp/key/couple-menu.keystore app/android/app/keystore/
 cp /tmp/key/key.properties       app/android/key.properties
 ```
