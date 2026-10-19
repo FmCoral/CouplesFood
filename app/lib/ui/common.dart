@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../core/app_updater.dart';
+import '../core/models.dart';
 import '../core/problem.dart';
 import '../state/app_state.dart';
 
@@ -42,6 +44,70 @@ Future<bool> runGuarded(BuildContext c, Future<void> Function() action,
     return false;
   } catch (e) {
     if (c.mounted) showSnack(c, '$e', error: true);
+    return false;
+  }
+}
+
+/// 创建订单（离线优先）：购物车 → 入队 + 乐观写本地。
+///
+/// 由菜单页底部「立即下单」调用。成功返回 true。
+Future<bool> createOrder(
+  BuildContext context,
+  AppState s, {
+  required Map<String, int> cart,
+  required Map<String, String> itemNotes,
+  required String mealType,
+  String? note,
+}) async {
+  if (cart.isEmpty) return false;
+  if (s.isFrozen) {
+    showSnack(context, '解散申请处理中，暂时不能下单', error: true);
+    return false;
+  }
+
+  final orderId = const Uuid().v4();
+  final payload = <String, dynamic>{
+    'id': orderId,
+    'mealType': mealType,
+    'items': [
+      for (final e in cart.entries)
+        {
+          'dishId': e.key,
+          'quantity': e.value,
+          if ((itemNotes[e.key] ?? '').isNotEmpty) 'note': itemNotes[e.key],
+        }
+    ],
+    if (note != null && note.isNotEmpty) 'note': note,
+  };
+
+  try {
+    await s.sync.createOrderOffline(payload);
+
+    // 乐观写入：网络失败时用户也能在订单页看到自己刚点的东西
+    final order = Order(
+      id: orderId,
+      status: 'pending',
+      mealType: mealType,
+      requestNote: payload['note'] as String?,
+      requesterId: s.session.userId,
+      version: 1,
+      items: [
+        for (final it in (payload['items'] as List).cast<Map<String, dynamic>>())
+          OrderItem(
+            dishId: it['dishId'] as String,
+            name: s.dishOf(it['dishId'] as String)?.name ?? '',
+            imageKey: s.dishOf(it['dishId'] as String)?.imageKey,
+            quantity: it['quantity'] as int,
+            note: it['note'] as String?,
+          )
+      ],
+      createdAt: DateTime.now(),
+    );
+    await s.db.upsertOrders([order]);
+    s.sync.refreshOrders().catchError((_) {});
+    return true;
+  } catch (e) {
+    if (context.mounted) showSnack(context, '$e', error: true);
     return false;
   }
 }

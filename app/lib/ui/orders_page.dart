@@ -5,11 +5,15 @@ import '../core/models.dart';
 import '../state/app_state.dart';
 import 'common.dart';
 import 'dish_photo.dart';
-import 'order_compose_page.dart';
 
 /// 订单页：进行中 / 历史
+///
+/// 点菜已迁移到「菜单」Tab，这里只看订单。空状态的「去点菜」会切回菜单 Tab。
 class OrdersPage extends StatefulWidget {
-  const OrdersPage({super.key});
+  const OrdersPage({super.key, required this.onGoToMenu});
+
+  /// 切到菜单 Tab（由 HomeShell 提供）
+  final VoidCallback onGoToMenu;
 
   @override
   State<OrdersPage> createState() => _OrdersPageState();
@@ -52,22 +56,6 @@ class _OrdersPageState extends State<OrdersPage> {
                   selected: _showDone,
                   onTap: () => setState(() => _showDone = true),
                 ),
-                const Spacer(),
-                if (!s.isFrozen)
-                  TextButton.icon(
-                    onPressed: () async {
-                      final created = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(builder: (_) => const OrderComposePage()),
-                      );
-                      if (created == true) setState(() => _showDone = false);
-                    },
-                    icon: const Icon(Icons.add, size: 17),
-                    label: const Text('点菜', style: TextStyle(fontSize: 13)),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      minimumSize: const Size(0, 32),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -86,17 +74,11 @@ class _OrdersPageState extends State<OrdersPage> {
                     child: EmptyState(
                       icon: _showDone ? Icons.history : Icons.receipt_long_outlined,
                       title: _showDone ? '还没有完成的订单' : '没有进行中的订单',
-                      subtitle: _showDone ? null : '想吃什么，从菜单里点几道吧',
+                      subtitle: _showDone ? null : '想吃什么，去菜单里点几道吧',
                       action: _showDone || s.isFrozen
                           ? null
                           : FilledButton(
-                              onPressed: () async {
-                                final created = await Navigator.of(context).push<bool>(
-                                  MaterialPageRoute(
-                                      builder: (_) => const OrderComposePage()),
-                                );
-                                if (created == true) setState(() => _showDone = false);
-                              },
+                              onPressed: widget.onGoToMenu,
                               style:
                                   FilledButton.styleFrom(minimumSize: const Size(150, 46)),
                               child: const Text('去点菜'),
@@ -118,18 +100,6 @@ class _OrdersPageState extends State<OrdersPage> {
                 ),
               ),
       ),
-      floatingActionButton: _showDone || s.isFrozen
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () async {
-                final created = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(builder: (_) => const OrderComposePage()),
-                );
-                if (created == true) setState(() => _showDone = false);
-              },
-              icon: const Icon(Icons.restaurant),
-              label: const Text('点菜'),
-            ),
     );
   }
 }

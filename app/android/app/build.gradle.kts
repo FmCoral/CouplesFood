@@ -30,6 +30,8 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // 注意：只打 arm64 需在构建命令加 --target-platform android-arm64，
+        // 在此处写 abiFilters 会被 Flutter Gradle 插件覆盖，不生效。
     }
 
     signingConfigs {

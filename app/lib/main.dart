@@ -72,7 +72,7 @@ class _BootState extends State<Boot> with WidgetsBindingObserver {
     return ChangeNotifierProvider<AppState>.value(
       value: _state,
       child: MaterialApp(
-        title: '情侣点菜',
+        title: '食在有你',
         debugShowCheckedModeBanner: false,
         scaffoldMessengerKey: _messengerKey,
         navigatorKey: _navKey,
@@ -133,21 +133,12 @@ class SplashScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 84,
-              height: 84,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [scheme.primary, scheme.primary.withValues(alpha: 0.72)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Icon(Icons.restaurant_menu, size: 42, color: Colors.white),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Image.asset('assets/logo.png', width: 84, height: 84),
             ),
             const SizedBox(height: 20),
-            const Text('情侣点菜',
+            const Text('食在有你',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: 2)),
             const SizedBox(height: 28),
             SizedBox(

@@ -186,7 +186,7 @@ CREATE TABLE orders (
   requester_id  uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,   -- 谁点的
   chef_id       uuid REFERENCES users(id) ON DELETE SET NULL,            -- 谁做（默认对方）
   meal_type     text NOT NULL DEFAULT 'dinner'
-                CHECK (meal_type IN ('breakfast','lunch','dinner','night_snack')),
+                CHECK (meal_type IN ('breakfast','lunch','dinner','night_snack','other')),
   status        text NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending','accepted','cooking','served','completed','rejected','cancelled')),
   request_note  text,

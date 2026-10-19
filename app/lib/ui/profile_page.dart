@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
-import 'common.dart';
 import 'category_manager.dart';
+import 'common.dart';
 import 'dissolve_sheet.dart';
+import 'menu_manager_page.dart';
 
 /// 我的：个人信息、称呼、分类管理、同步、解散、退出
 class ProfilePage extends StatelessWidget {
@@ -97,6 +98,14 @@ class ProfilePage extends StatelessWidget {
 
           // ---- 菜单设置 ----
           _Group(title: '菜单', children: [
+            _Row(
+              icon: Icons.restaurant_menu_outlined,
+              label: '菜单管理',
+              trailing: '${s.dishes.length} 道菜',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MenuManagerPage()),
+              ),
+            ),
             _Row(
               icon: Icons.category_outlined,
               label: '种类管理',

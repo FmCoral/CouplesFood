@@ -311,6 +311,7 @@ class Order {
         'lunch' => '午餐',
         'dinner' => '晚餐',
         'night_snack' => '夜宵',
+        'other' => '其他',
         _ => mealType,
       };
 

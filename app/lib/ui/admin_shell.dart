@@ -745,6 +745,7 @@ class _AdminCoupleDetailState extends State<AdminCoupleDetail>
         'lunch' => '午餐',
         'dinner' => '晚餐',
         'night_snack' => '夜宵',
+        'other' => '其他',
         _ => s,
       };
 

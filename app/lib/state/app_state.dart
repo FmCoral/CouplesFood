@@ -74,9 +74,9 @@ class AppState extends ChangeNotifier {
     // 版本号唯一真相源是 pubspec：运行时读取，UI 只展示、不再硬编码
     try {
       final info = await PackageInfo.fromPlatform();
-      appVersion = info.buildNumber.isEmpty
-          ? info.version
-          : '${info.version}+${info.buildNumber}';
+      // 只展示 versionName（如 2.0.0）；versionCode（+11）是 Android
+      // 覆盖更新用的内部整数，不展示。
+      appVersion = info.version;
     } catch (_) {
       // 读不到就留空，UI 兜底显示 —
     }

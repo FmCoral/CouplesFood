@@ -24,7 +24,16 @@ class _OrderComposePageState extends State<OrderComposePage> {
   final Map<String, String> _itemNotes = {};
   final _noteCtrl = TextEditingController();
 
-  String _mealType = 'dinner';
+  String _mealType = (() {
+    final h = DateTime.now().hour;
+    return h >= 5 && h < 10
+        ? 'breakfast'
+        : h >= 10 && h < 14
+            ? 'lunch'
+            : h >= 14 && h < 21
+                ? 'dinner'
+                : 'night_snack';
+  })();
   String? _typeId;
   bool _submitting = false;
 
@@ -249,6 +258,7 @@ class _OrderComposePageState extends State<OrderComposePage> {
                             ['lunch', '午餐'],
                             ['dinner', '晚餐'],
                             ['night_snack', '夜宵'],
+                            ['other', '其他'],
                           ])
                             Padding(
                               padding: const EdgeInsets.only(right: 8),

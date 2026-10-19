@@ -7,11 +7,9 @@ import 'common.dart';
 import 'dish_editor.dart';
 import 'dish_photo.dart';
 
-/// 菜单页
+/// 菜单页：浏览 + 加菜进购物车 → 底部「立即下单」
 ///
-/// 双维度筛选：种类单选 + 口味多选。
-/// 口味是"全部命中"（选了「辣」+「重口」只剩两个标签都有的菜），
-/// 与后端 `HAVING COUNT(DISTINCT flavor_id) = N` 保持一致。
+/// 菜品编辑（增删改）已迁移到「我的 → 菜单管理」，这里只负责点菜。
 class MenuPage extends StatefulWidget {
   const MenuPage({super.key});
 
@@ -25,6 +23,10 @@ class _MenuPageState extends State<MenuPage> {
   String _keyword = '';
   bool _searching = false;
   final _searchCtrl = TextEditingController();
+
+  /// 购物车：dishId -> 份数
+  final Map<String, int> _cart = {};
+  final Map<String, String> _itemNotes = {};
 
   @override
   void dispose() {
@@ -47,6 +49,21 @@ class _MenuPageState extends State<MenuPage> {
     }).toList();
   }
 
+  int get _totalQty => _cart.values.fold(0, (a, b) => a + b);
+
+  void _bump(Dish d, int delta) {
+    setState(() {
+      final cur = _cart[d.id] ?? 0;
+      final next = cur + delta;
+      if (next <= 0) {
+        _cart.remove(d.id);
+        _itemNotes.remove(d.id);
+      } else {
+        _cart[d.id] = next.clamp(1, 20);
+      }
+    });
+  }
+
   Future<void> _openEditor([Dish? dish]) async {
     if (context.read<AppState>().isFrozen) {
       context.snack('解散申请处理中，暂时不能修改菜单', error: true);
@@ -55,6 +72,177 @@ class _MenuPageState extends State<MenuPage> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => DishEditor(dish: dish)),
     );
+  }
+
+  /// 底部「立即下单」弹层：选餐次 + 留言 + 确认
+  Future<void> _showCheckout() async {
+    if (_cart.isEmpty) return;
+    final s = context.read<AppState>();
+    if (s.isFrozen) {
+      context.snack('解散申请处理中，暂时不能下单', error: true);
+      return;
+    }
+
+    // 根据当前时间自动推测餐次：5-10 早餐，10-14 午餐，14-21 晚餐，其余夜宵
+    final h = DateTime.now().hour;
+    String mealType = h >= 5 && h < 10
+        ? 'breakfast'
+        : h >= 10 && h < 14
+            ? 'lunch'
+            : h >= 14 && h < 21
+                ? 'dinner'
+                : 'night_snack';
+    final noteCtrl = TextEditingController();
+    bool submitting = false;
+
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (c) {
+        return StatefulBuilder(
+          builder: (c, setSheet) => Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 8,
+              bottom: MediaQuery.of(c).viewInsets.bottom + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text('确认下单',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(c, false),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                // 已选菜品
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(c).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Column(
+                    children: [
+                      for (final e in _cart.entries)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 5),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  s.dishOf(e.key)?.name ?? '',
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                              Text('×${e.value}',
+                                  style: TextStyle(
+                                      fontSize: 13.5,
+                                      color: Theme.of(c).colorScheme.onSurfaceVariant)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // 餐次
+                Text('餐次',
+                    style: TextStyle(
+                        fontSize: 12.5, color: Theme.of(c).colorScheme.onSurfaceVariant)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final m in const [
+                      ['breakfast', '早餐'],
+                      ['lunch', '午餐'],
+                      ['dinner', '晚餐'],
+                      ['night_snack', '夜宵'],
+                      ['other', '其他'],
+                    ])
+                      _MiniPill(
+                        label: m[1],
+                        selected: mealType == m[0],
+                        onTap: () => setSheet(() => mealType = m[0]),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // 留言
+                TextField(
+                  controller: noteCtrl,
+                  maxLength: 200,
+                  maxLines: 2,
+                  style: const TextStyle(fontSize: 13.5),
+                  decoration: const InputDecoration(
+                    hintText: '想说的话（选填）',
+                    counterText: '',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: submitting
+                        ? null
+                        : () async {
+                            setSheet(() => submitting = true);
+                            final done = await createOrder(
+                              c,
+                              s,
+                              cart: Map.of(_cart),
+                              itemNotes: Map.of(_itemNotes),
+                              mealType: mealType,
+                              note: noteCtrl.text.trim(),
+                            );
+                            if (done && c.mounted) {
+                              Navigator.pop(c, true);
+                            } else if (c.mounted) {
+                              setSheet(() => submitting = false);
+                            }
+                          },
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                    child: submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : Text('下单 · $_totalQty 份'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    noteCtrl.dispose();
+    if (ok == true && mounted) {
+      setState(() {
+        _cart.clear();
+        _itemNotes.clear();
+      });
+      context.snack('已下单，等对方接单');
+    }
   }
 
   @override
@@ -110,13 +298,6 @@ class _MenuPageState extends State<MenuPage> {
           ),
         ],
       ),
-      floatingActionButton: s.isFrozen
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => _openEditor(),
-              icon: const Icon(Icons.add),
-              label: const Text('加菜'),
-            ),
       body: Column(
         children: [
           _FilterBar(
@@ -139,7 +320,6 @@ class _MenuPageState extends State<MenuPage> {
               },
               child: dishes.isEmpty
                   ? ListView(
-                      // 必须可滚动，否则下拉刷新失效
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: [
                         SizedBox(
@@ -178,23 +358,94 @@ class _MenuPageState extends State<MenuPage> {
                       ],
                     )
                   : GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 100),
+                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
                       physics: const AlwaysScrollableScrollPhysics(),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
                         mainAxisSpacing: 12,
                         crossAxisSpacing: 12,
-                        childAspectRatio: 0.78,
+                        childAspectRatio: 0.68,
                       ),
                       itemCount: dishes.length,
                       itemBuilder: (c, i) => _DishCard(
                         dish: dishes[i],
-                        onTap: () => _openEditor(dishes[i]),
+                        qty: _cart[dishes[i].id] ?? 0,
+                        onAdd: () => _bump(dishes[i], 1),
+                        onRemove: () => _bump(dishes[i], -1),
                       ),
                     ),
             ),
           ),
+          // 底部结算条
+          if (_cart.isNotEmpty) _checkoutBar(scheme),
         ],
+      ),
+    );
+  }
+
+  Widget _checkoutBar(ColorScheme scheme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, -3),
+          )
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 14, 10),
+          child: Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(Icons.shopping_basket_outlined, size: 28, color: scheme.primary),
+                  if (_totalQty > 0)
+                    Positioned(
+                      right: -6,
+                      top: -6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: scheme.error,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text('$_totalQty',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('已选 $_totalQty 份',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                    Text('${_cart.length} 种菜',
+                        style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              FilledButton(
+                onPressed: _showCheckout,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(120, 46),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                ),
+                child: const Text('立即下单'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -346,98 +597,191 @@ class _Pill extends StatelessWidget {
 // ---------------- 菜品卡片 ----------------
 
 class _DishCard extends StatelessWidget {
-  const _DishCard({required this.dish, required this.onTap});
+  const _DishCard({
+    required this.dish,
+    required this.qty,
+    required this.onAdd,
+    required this.onRemove,
+  });
 
   final Dish dish;
-  final VoidCallback onTap;
+  final int qty;
+  final VoidCallback onAdd;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
     final scheme = Theme.of(context).colorScheme;
     final url = s.imageUrlOf(dish);
+    final disabled = !dish.isAvailable;
 
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: 1.32,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                DishPhoto(url: url, name: dish.name),
+                if (disabled)
+                  Container(
+                    color: Colors.black.withValues(alpha: 0.42),
+                    alignment: Alignment.center,
+                    child: const Text('已下架',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  dish.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 5),
+                SizedBox(
+                  height: 20,
+                  child: (dish.typeName == null && dish.flavorNames.isEmpty)
+                      ? Text(
+                          dish.note?.isNotEmpty == true ? dish.note! : '未分类',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11.5, color: scheme.onSurfaceVariant),
+                        )
+                      : ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            if (dish.typeName != null)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: TagChip(dish.typeName!),
+                              ),
+                            for (final f in dish.flavorNames.take(2))
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: TagChip(f, color: scheme.tertiary),
+                              ),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: 8),
+                // 加减号控件
+                if (disabled)
+                  const SizedBox(height: 28)
+                else if (qty == 0)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      onTap: onAdd,
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: scheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.add, size: 16, color: Colors.white),
+                      ),
+                    ),
+                  )
+                else
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      _RoundBtn(icon: Icons.remove, onTap: onRemove),
+                      SizedBox(
+                        width: 28,
+                        child: Text('$qty',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                      ),
+                      _RoundBtn(icon: Icons.add, onTap: onAdd, filled: true),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoundBtn extends StatelessWidget {
+  const _RoundBtn({required this.icon, required this.onTap, this.filled = false});
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        width: 26,
+        height: 26,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: filled ? scheme.primary : scheme.primary.withValues(alpha: 0.10),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, size: 15, color: filled ? Colors.white : scheme.primary),
+      ),
+    );
+  }
+}
+
+class _MiniPill extends StatelessWidget {
+  const _MiniPill({required this.label, required this.selected, required this.onTap});
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? scheme.primary : Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.035),
-              blurRadius: 12,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          border: Border.all(
+              color: selected ? scheme.primary : scheme.outlineVariant.withValues(alpha: 0.7)),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: 1.32,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  DishPhoto(url: url, name: dish.name),
-                  if (!dish.isAvailable)
-                    Container(
-                      color: Colors.black.withValues(alpha: 0.42),
-                      alignment: Alignment.center,
-                      child: const Text('已下架',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    dish.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 5),
-                  SizedBox(
-                    height: 20,
-                    child: (dish.typeName == null && dish.flavorNames.isEmpty)
-                        ? Text(
-                            dish.note?.isNotEmpty == true ? dish.note! : '未分类',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 11.5, color: scheme.onSurfaceVariant),
-                          )
-                        : ListView(
-                            scrollDirection: Axis.horizontal,
-                            children: [
-                              if (dish.typeName != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: TagChip(dish.typeName!),
-                                ),
-                              for (final f in dish.flavorNames.take(2))
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: TagChip(f,
-                                      color: scheme.tertiary),
-                                ),
-                            ],
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        child: Text(label,
+            style: TextStyle(
+              fontSize: 13,
+              color: selected ? Colors.white : scheme.onSurface,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            )),
       ),
     );
   }

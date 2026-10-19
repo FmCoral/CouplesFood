@@ -54,7 +54,7 @@ export default async function orderRoutes(app: FastifyInstance) {
         quantity: z.number().int().min(1).max(20).default(1),
         note: z.string().max(100).optional(),
       })).min(1, '至少选一道菜').max(50, '一次最多 50 道'),
-      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'night_snack']).default('dinner'),
+      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'night_snack', 'other']).default('dinner'),
       note: z.string().max(200).optional(),
       etaAt: z.string().datetime().optional(),
     }).safeParse(req.body);
