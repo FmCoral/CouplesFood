@@ -47,6 +47,8 @@ export default async function orderRoutes(app: FastifyInstance) {
   // ---------------- 下单 ----------------
   app.post('/api/orders', { preHandler: [authenticate, requireNotAdmin] }, async (req, reply) => {
     const parsed = z.object({
+      // 客户端生成的订单 id：作为幂等键，断网重放不会重复下单
+      id: UUID.optional(),
       items: z.array(z.object({
         dishId: UUID,
         quantity: z.number().int().min(1).max(20).default(1),
@@ -84,11 +86,23 @@ export default async function orderRoutes(app: FastifyInstance) {
       );
 
       const { rows } = await c.query(
-        `INSERT INTO orders (couple_id, requester_id, chef_id, meal_type, request_note, eta_at)
-         VALUES ($1,$2,$3,$4,$5,$6)
+        `INSERT INTO orders (id, couple_id, requester_id, chef_id, meal_type, request_note, eta_at)
+         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2,$3,$4,$5,$6,$7)
+         ON CONFLICT (id) DO NOTHING
          RETURNING id, status, version, created_at`,
-        [coupleId, u.userId, partner.rows[0]?.partner ?? null, input.mealType, input.note ?? null, input.etaAt ?? null],
+        [input.id ?? null, coupleId, u.userId, partner.rows[0]?.partner ?? null, input.mealType, input.note ?? null, input.etaAt ?? null],
       );
+
+      // 幂等命中：这个 id 的订单已存在（重放），直接返回原样，不再重复写 items / 发事件
+      if (!rows[0]) {
+        const dup = await c.query(
+          `SELECT id, status, version, created_at FROM orders WHERE id = $1 AND couple_id = $2`,
+          [input.id, coupleId],
+        );
+        if (!dup.rows[0]) throw new Conflict('订单 id 冲突，请重试');
+        return { order: dup.rows[0], events: [] as SyncEvent[] };
+      }
+
       const order = rows[0];
 
       for (const item of input.items) {

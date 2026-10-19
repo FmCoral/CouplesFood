@@ -57,7 +57,7 @@ class _LoginPageState extends State<LoginPage> {
           nickname: '',
         );
       }
-    });
+    }, showAuthError: true);
 
     if (mounted) setState(() => _busy = false);
     if (!ok) return;

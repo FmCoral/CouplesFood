@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'state/app_state.dart';
 import 'ui/admin_shell.dart';
 import 'ui/bind_page.dart';
+import 'ui/common.dart';
 import 'ui/home_shell.dart';
 import 'ui/login_page.dart';
 import 'ui/theme.dart';
@@ -21,17 +24,45 @@ class Boot extends StatefulWidget {
   State<Boot> createState() => _BootState();
 }
 
-class _BootState extends State<Boot> {
+class _BootState extends State<Boot> with WidgetsBindingObserver {
   final _state = AppState();
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  final _navKey = GlobalKey<NavigatorState>();
+  StreamSubscription<String>? _noticeSub;
 
   @override
   void initState() {
     super.initState();
-    _state.bootstrap();
+    WidgetsBinding.instance.addObserver(this);
+    // 同步冲突之类需要用户知道的提示，由 AppState 转发到这里统一弹出
+    _state.bootstrap().then((_) {
+      _noticeSub = _state.notices.listen((msg) {
+        _messengerKey.currentState
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: Text(msg),
+            duration: const Duration(seconds: 4),
+          ));
+      });
+      // 启动静默检查更新：有新版本才弹窗，没有就当无事发生。
+      // 放在首帧之后，等 MaterialApp / Navigator 挂好再拿 context。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _navKey.currentContext;
+        if (ctx != null && ctx.mounted) unawaited(checkForUpdate(ctx));
+      });
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 后台挂起会掐断 WS 的定时器，回到前台立刻重连，别干等退避
+    if (state == AppLifecycleState.resumed) _state.onAppResumed();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _noticeSub?.cancel();
     _state.dispose();
     super.dispose();
   }
@@ -43,6 +74,8 @@ class _BootState extends State<Boot> {
       child: MaterialApp(
         title: '情侣点菜',
         debugShowCheckedModeBanner: false,
+        scaffoldMessengerKey: _messengerKey,
+        navigatorKey: _navKey,
         theme: AppTheme.light(),
         builder: (context, child) {
           // 全局限制字体放大，避免系统超大字体把布局顶爆

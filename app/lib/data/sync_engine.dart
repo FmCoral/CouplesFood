@@ -41,6 +41,10 @@ class SyncEngine {
   SyncStatus _current = const SyncStatus.idle();
   SyncStatus get current => _current;
 
+  /// 必须让用户看见的提示（如离线操作重放时被对方抢先处理产生的冲突）
+  final _notices = StreamController<String>.broadcast();
+  Stream<String> get notices => _notices.stream;
+
   void _emit(SyncChange c) {
     if (!_disposed) _changes.add(c);
   }
@@ -142,13 +146,33 @@ class SyncEngine {
           return true; // 未知操作直接丢弃，避免卡死队列
       }
     } on ApiProblem catch (e) {
-      // 409 冲突 / 404 已被删：本地状态已过时，丢弃该操作并触发重拉
-      if (e.isConflict || e.isNotFound) return true;
+      // 409 冲突：操作已过时（常发生在离线期间两人对同一订单做了相反操作），
+      // 重试没有意义 → 丢弃，但绝不能静默：必须提示用户并立刻重拉纠正本地状态。
+      if (e.isConflict) {
+        if (!_disposed) _notices.add(e.friendly);
+        await _refreshAfterConflict(op);
+        return true;
+      }
+      // 404 已被删：同样丢弃
+      if (e.isNotFound) return true;
       // 422 参数错误：重试也没用
       if (e.status == 422) return true;
       return false;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// 冲突后重拉，把本地状态纠正回服务端真实状态
+  Future<void> _refreshAfterConflict(String op) async {
+    try {
+      if (op.startsWith('order.')) {
+        await refreshOrders();
+      } else {
+        await refreshMenu();
+      }
+    } catch (_) {
+      // 重拉失败不影响丢弃冲突操作，下一次定时同步会补上
     }
   }
 
@@ -287,27 +311,45 @@ class SyncEngine {
   /// 客户端压缩：长边 1280 / JPEG q80，通常 200–500KB
   ///
   /// 4G 弱网下原图（3–5MB）必然超时，压缩是必须的而不是优化。
+  /// 压缩不可用时（Windows 桌面端没有该插件实现）回退上传原图，见 [_tryCompress]。
   Future<Map<String, dynamic>> compressAndUpload(String srcPath) async {
     final tmpDir = await getTemporaryDirectory();
     final target = p.join(tmpDir.path, 'up_${DateTime.now().millisecondsSinceEpoch}.jpg');
 
-    final compressed = await FlutterImageCompress.compressAndGetFile(
-      srcPath,
-      target,
-      quality: 80,
-      minWidth: 1280,
-      minHeight: 1280,
-      format: CompressFormat.jpeg,
-    );
+    final compressedPath = await _tryCompress(srcPath, target);
 
-    final path = compressed?.path ?? srcPath;
+    final path = compressedPath ?? srcPath;
     try {
       return await api.uploadImage(path);
     } finally {
       // 临时文件用完即删
       try {
-        if (compressed != null) await File(path).delete();
+        if (compressedPath != null) await File(compressedPath).delete();
       } catch (_) {}
+    }
+  }
+
+  /// 尝试压缩，失败则回退「上传原图」
+  ///
+  /// flutter_image_compress 没有 Windows / Linux 实现，桌面调试时该调用会抛
+  /// MissingPluginException。桌面端只是本地调试通道，压缩失败不应该阻断上传，
+  /// 因此这里吞掉异常并返回 null —— 上层会直接用原图路径继续上传。
+  /// Android / iOS / macOS 行为完全不变。
+  ///
+  /// 返回压缩后的临时文件路径；压缩不可用（或失败）时返回 null。
+  Future<String?> _tryCompress(String srcPath, String target) async {
+    try {
+      final compressed = await FlutterImageCompress.compressAndGetFile(
+        srcPath,
+        target,
+        quality: 80,
+        minWidth: 1280,
+        minHeight: 1280,
+        format: CompressFormat.jpeg,
+      );
+      return compressed?.path;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -316,6 +358,7 @@ class SyncEngine {
     stop();
     _changes.close();
     _status.close();
+    _notices.close();
   }
 }
 
@@ -355,7 +398,12 @@ class SyncStatus {
 
   bool get isOnline => error == null;
   String get label {
-    if (error != null) return '离线';
+    // 别再只说「离线」——那会把网络正常、代码出错的情况也伪装成断网，
+    // 直接把真实原因显示出来（过长则截断，避免顶栏溢出）。
+    if (error != null) {
+      final msg = error!;
+      return msg.length <= 14 ? msg : '${msg.substring(0, 14)}…';
+    }
     if (pending > 0) return '待同步 $pending';
     return '已同步';
   }

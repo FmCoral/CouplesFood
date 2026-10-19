@@ -5,7 +5,7 @@ import { newInviteCode } from '../../auth.js';
 import { Conflict, Forbidden, NotFound, Validation, zodIssues } from '../../errors.js';
 import { authenticate, currentCoupleId, me, requireNotAdmin } from '../../middleware/auth.js';
 import { broadcast, emitInTx, type SyncEvent } from '../../events.js';
-import { initCoupleCategories } from '../../shared/presets.js';
+import { initCouplePresets } from '../../shared/presets.js';
 import { issueTokensFor } from '../../shared/tokens.js';
 import { clearFailures, isLocked, recordFailure } from '../../shared/rate-limit.js';
 
@@ -94,9 +94,14 @@ export default async function coupleRoutes(app: FastifyInstance) {
       }
       if (cp.member_a === u.userId) throw new Conflict('不能和自己绑定');
 
-      // B 自己不能已在别的关系里
+      // B 自己不能已在「真正的关系」里。
+      // 注意：不能把 status <> 'dissolved' 全算进来 —— 自己生成邀请码时
+      // /couples/invite 会插入一行 status='pending'、member_a=自己，
+      // 那是「待用邀请」而非关系，生成邀请码与绑定必须互不干扰。
       const other = await c.query(
-        `SELECT 1 FROM couples WHERE status <> 'dissolved' AND (member_a = $1 OR member_b = $1) FOR UPDATE`,
+        `SELECT 1 FROM couples
+          WHERE status IN ('active','dissolving') AND (member_a = $1 OR member_b = $1)
+          FOR UPDATE`,
         [u.userId],
       );
       if (other.rowCount) throw new Conflict('你已经在另一段关系中，请先处理');
@@ -113,12 +118,18 @@ export default async function coupleRoutes(app: FastifyInstance) {
           WHERE member_a = $1 AND status = 'pending' AND id <> $2`,
         [cp.member_a, cp.id],
       );
+      // B（加入方）自己若有 pending 邀请，同样作废，避免生成码与绑定互相干扰
+      await c.query(
+        `UPDATE couples SET status = 'dissolved', dissolved_at = now(), dissolved_reason = 'superseded'
+          WHERE member_a = $1 AND status = 'pending' AND id <> $2`,
+        [u.userId, cp.id],
+      );
       await c.query(
         `INSERT INTO couple_members (couple_id, user_id) VALUES ($1,$2), ($1,$3)
          ON CONFLICT DO NOTHING`,
         [cp.id, cp.member_a, u.userId],
       );
-      await initCoupleCategories(c, cp.id);
+      await initCouplePresets(c, cp.id, cp.member_a);
       await c.query(`INSERT INTO invite_attempts (device_id, code_tried, success) VALUES ($1,$2,true)`, [deviceId, inviteCode]);
 
       events.push(await emitInTx(c, {

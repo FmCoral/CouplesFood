@@ -1,7 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/config.dart';
 import '../state/app_state.dart';
 import 'common.dart';
 import 'category_manager.dart';
@@ -29,121 +30,65 @@ class ProfilePage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
-          // ---- 我 ----
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                _Avatar(
-                  name: s.session.nickname,
-                  size: 54,
-                  tint: scheme.primary,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        s.session.nickname.isEmpty ? '我' : s.session.nickname,
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Text(s.session.phone,
-                              style: TextStyle(
-                                  fontSize: 12.5, color: scheme.onSurfaceVariant)),
-                          if ((s.couple?.myRoleLabel ?? '').isNotEmpty) ...[
-                            const SizedBox(width: 8),
-                            TagChip(s.couple!.myRoleLabel!),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 19),
-                  tooltip: '修改昵称',
-                  onPressed: () async {
-                    final name = await promptText(context,
-                        title: '修改昵称', initial: s.session.nickname, maxLength: 20);
-                    if (name == null || !context.mounted) return;
-                    await runGuarded(context, () async {
-                      await s.api.patch<Map<String, dynamic>>('/auth/me', {'nickname': name});
-                      s.session.nickname = name;
-                      await s.refreshCouple();
-                      s.notifyNow();
-                    }, success: '已更新昵称');
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // ---- 另一半 ----
-          if (partner != null)
+          // ---- 我们：两人的头像分列左右，中间两条交织曲线 ----
+          if (partner == null)
+            _SoloCard(
+              name: s.session.nickname,
+              subtitle: s.session.phone,
+              tint: scheme.primary,
+              roleLabel: s.couple?.myRoleLabel,
+              action: IconButton(
+                icon: const Icon(Icons.edit_outlined, size: 19),
+                tooltip: '修改昵称',
+                onPressed: () => _editNickname(context, s),
+              ),
+            )
+          else
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(12, 18, 12, 14),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _Avatar(name: partner.nickname, size: 46, tint: scheme.tertiary),
-                  const SizedBox(width: 13),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(partner.nickname,
-                                style: const TextStyle(
-                                    fontSize: 15, fontWeight: FontWeight.w600)),
-                            if ((partner.roleLabel ?? '').isNotEmpty) ...[
-                              const SizedBox(width: 7),
-                              TagChip(partner.roleLabel!, color: scheme.tertiary),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _sinceText(s.couple?.boundAt),
-                          style:
-                              TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-                        ),
-                      ],
+                    child: _PersonColumn(
+                      name: s.session.nickname.isEmpty ? '我' : s.session.nickname,
+                      subtitle: s.session.phone,
+                      tint: scheme.primary,
+                      roleLabel: s.couple?.myRoleLabel,
+                      action: IconButton(
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        tooltip: '修改昵称',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _editNickname(context, s),
+                      ),
                     ),
                   ),
-                  TextButton(
-                    onPressed: () async {
-                      final label = await promptText(
-                        context,
-                        title: '在关系里的称呼',
-                        hint: '比如 老婆 / 老公 / 大厨',
-                        initial: s.couple?.myRoleLabel,
-                        maxLength: 12,
-                      );
-                      if (!context.mounted) return;
-                      await runGuarded(
-                        context,
-                        () => s.setRoleLabel(label),
-                        success: '已设置',
-                      );
-                    },
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      minimumSize: const Size(0, 34),
+                  const SizedBox(
+                    width: 74,
+                    height: 56,
+                    child: _InterwovenCurves(),
+                  ),
+                  Expanded(
+                    child: _PersonColumn(
+                      name: partner.nickname,
+                      subtitle: _sinceText(s.couple?.boundAt),
+                      tint: scheme.tertiary,
+                      roleLabel: partner.roleLabel,
+                      alignEnd: true,
+                      action: TextButton(
+                        onPressed: () => _editRoleLabel(context, s),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          minimumSize: const Size(0, 30),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: const Text('我的称呼', style: TextStyle(fontSize: 12.5)),
+                      ),
                     ),
-                    child: const Text('我的称呼', style: TextStyle(fontSize: 12.5)),
                   ),
                 ],
               ),
@@ -191,10 +136,10 @@ class ProfilePage extends StatelessWidget {
               onTap: () => _changePassword(context),
             ),
             _Row(
-              icon: Icons.info_outline,
-              label: '版本',
-              trailing: AppConfig.appVersion,
-              onTap: null,
+              icon: Icons.system_update_outlined,
+              label: '检查更新',
+              trailing: s.appVersion.isEmpty ? '—' : s.appVersion,
+              onTap: () => checkForUpdate(context, manual: true),
             ),
           ]),
           const SizedBox(height: 18),
@@ -227,17 +172,33 @@ class ProfilePage extends StatelessWidget {
               },
             ),
           ]),
-          const SizedBox(height: 24),
-          Center(
-            child: Text(
-              '数据存在你自己的服务器上\n两个人一份菜单，别人看不到',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11.5, height: 1.7, color: scheme.onSurfaceVariant),
-            ),
-          ),
         ],
       ),
     );
+  }
+
+  static Future<void> _editNickname(BuildContext context, AppState s) async {
+    final name = await promptText(context,
+        title: '修改昵称', initial: s.session.nickname, maxLength: 20);
+    if (name == null || !context.mounted) return;
+    await runGuarded(context, () async {
+      await s.api.patch<Map<String, dynamic>>('/auth/me', {'nickname': name});
+      s.session.nickname = name;
+      await s.refreshCouple();
+      s.notifyNow();
+    }, success: '已更新昵称');
+  }
+
+  static Future<void> _editRoleLabel(BuildContext context, AppState s) async {
+    final label = await promptText(
+      context,
+      title: '在关系里的称呼',
+      hint: '比如 老婆 / 老公 / 大厨',
+      initial: s.couple?.myRoleLabel,
+      maxLength: 12,
+    );
+    if (!context.mounted) return;
+    await runGuarded(context, () => s.setRoleLabel(label), success: '已设置');
   }
 
   static String _sinceText(DateTime? t) {
@@ -312,6 +273,187 @@ class ProfilePage extends StatelessWidget {
     // 改密后所有刷新令牌作废，必须重新登录
     if (done && context.mounted) await s.logout();
   }
+}
+
+/// 一侧的人：头像 + 昵称 + 副标题 +（可选）关系称呼 +（可选）操作。
+/// [alignEnd] 为 true 时整体贴右（另一半），false 贴左（我）。
+class _PersonColumn extends StatelessWidget {
+  const _PersonColumn({
+    required this.name,
+    required this.subtitle,
+    required this.tint,
+    this.roleLabel,
+    this.action,
+    this.alignEnd = false,
+  });
+
+  final String name;
+  final String subtitle;
+  final Color tint;
+  final String? roleLabel;
+  final Widget? action;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final align = alignEnd ? Alignment.centerRight : Alignment.centerLeft;
+    final textAlign = alignEnd ? TextAlign.right : TextAlign.left;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(alignment: align, child: _Avatar(name: name, size: 56, tint: tint)),
+        const SizedBox(height: 9),
+        Text(
+          name,
+          textAlign: textAlign,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
+        ),
+        if ((roleLabel ?? '').isNotEmpty) ...[
+          const SizedBox(height: 5),
+          Align(
+            alignment: align,
+            child: TagChip(roleLabel!, color: alignEnd ? scheme.tertiary : null),
+          ),
+        ],
+        const SizedBox(height: 5),
+        Text(
+          subtitle,
+          textAlign: textAlign,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+        ),
+        if (action != null) ...[
+          const SizedBox(height: 2),
+          Align(alignment: align, child: action!),
+        ],
+      ],
+    );
+  }
+}
+
+/// 还没有另一半时的单人卡片（生成邀请码后的过渡态）
+class _SoloCard extends StatelessWidget {
+  const _SoloCard({
+    required this.name,
+    required this.subtitle,
+    required this.tint,
+    this.roleLabel,
+    this.action,
+  });
+
+  final String name;
+  final String subtitle;
+  final Color tint;
+  final String? roleLabel;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          _Avatar(name: name, size: 54, tint: tint),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name.isEmpty ? '我' : name,
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(subtitle,
+                        style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+                    if ((roleLabel ?? '').isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      TagChip(roleLabel!),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          ?action,
+        ],
+      ),
+    );
+  }
+}
+
+/// 两条交织的正弦曲线：纯装饰，两端不与头像相接。
+class _InterwovenCurves extends StatelessWidget {
+  const _InterwovenCurves();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return CustomPaint(
+      size: Size.infinite,
+      painter: _CurvesPainter(
+        colors: [
+          scheme.primary.withValues(alpha: 0.7),
+          scheme.tertiary.withValues(alpha: 0.7),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurvesPainter extends CustomPainter {
+  _CurvesPainter({required this.colors});
+
+  final List<Color> colors;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final mid = h / 2;
+    final amp = h * 0.24;
+    final left = w * 0.06; // 两端留空隙：曲线不碰到左右头像
+    final right = w * 0.94;
+    const steps = 48;
+
+    for (var k = 0; k < 2; k++) {
+      final sign = k == 0 ? -1.0 : 1.0;
+      final paint = Paint()
+        ..color = colors[k]
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round;
+      final path = Path();
+      for (var i = 0; i <= steps; i++) {
+        final t = i / steps;
+        final x = left + (right - left) * t;
+        // 两条相位相反的正弦曲线：中间交叉两次，形成交织感
+        final y = mid + sign * amp * math.cos(2 * math.pi * t);
+        if (i == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CurvesPainter oldDelegate) => oldDelegate.colors != colors;
 }
 
 class _Avatar extends StatelessWidget {

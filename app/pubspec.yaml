@@ -1,7 +1,7 @@
 name: couple_menu
 description: "情侣点菜 · 只给两个人的菜单"
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.8+9
 
 environment:
   sdk: ^3.13.5
@@ -22,6 +22,13 @@ dependencies:
   path: ^1.9.0
   path_provider: ^2.1.5
 
+  # --- 仅 Windows / Linux 桌面调试需要 ---
+  # sqflite 官方只实现 Android / iOS / macOS；桌面端必须切到 FFI 版工厂，
+  # sqlite3_flutter_libs 提供桌面端的 sqlite3 原生库。
+  # Android 打包不受影响：initDbPlatform() 只在 Platform.isWindows/Linux 时切换工厂。
+  sqflite_common_ffi: ^2.3.0
+  sqlite3_flutter_libs: ^0.5.0
+
   # 图片
   image_picker: ^1.1.2
   flutter_image_compress: ^2.3.0
@@ -34,10 +41,35 @@ dependencies:
   connectivity_plus: ^6.1.0
   package_info_plus: ^8.1.1
 
+  # 应用内更新：下载完 APK 后用系统安装器打开
+  open_filex: ^4.5.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+
+# --- 仅 Windows 桌面调试：让 sqlite3 走本地源码编译 ---
+#
+# sqlite3 包的 native-assets hook 默认从 GitHub Releases 下载预编译库，
+# 在受限/代理网络下会失败（构建报 "Building native assets failed"），
+# 那样会把本来好好的 build apk 也一起拖挂。
+#
+# 所以这里改成：windows 用本地 sqlite3.c 编译，android 直接用系统 libsqlite.so，
+# 两端都不再联网。安卓上 sqflite 走 sqflite_android 原生实现，这个库不会被用到。
+#
+# 想恢复默认（GitHub 下载）就删掉整个 hooks: 块。
+hooks:
+  user_defines:
+    sqlite3:
+      # windows：用本地 sqlite3.c 编译，不联网
+      # android：直接用系统自带的 libsqlite.so，不下载、不编译、也不打包进 APK
+      #          （安卓上 sqflite 走的是 sqflite_android 原生实现，这个库实际不会被用到）
+      source:
+        default: system
+        windows: source
+      name_android: libsqlite.so
+      path: windows/sqlite3_src/sqlite3.c
 
 flutter:
   uses-material-design: true

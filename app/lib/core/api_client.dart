@@ -98,10 +98,13 @@ class ApiClient {
 
     if (resp.body.isEmpty) return null as T;
     final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
-    if (decoded is Map && decoded.containsKey('data')) {
+    // /sync/events 返回 { data, cursor }，两者同级，调用方要的是整个信封，
+    // 所以带 cursor 时不拆包；其余接口一律是 { data: ... }，正常拆包。
+    if (decoded is Map &&
+        decoded.containsKey('data') &&
+        !decoded.containsKey('cursor')) {
       return decoded['data'] as T;
     }
-    // 同步接口返回 { data, cursor }，这里把整体给回去
     return decoded as T;
   }
 

@@ -30,6 +30,12 @@ class _DissolveSheet extends StatefulWidget {
 class _DissolveSheetState extends State<_DissolveSheet> {
   bool _busy = false;
 
+  /// 进入面板那一刻是否已有解散申请。
+  /// 用来区分两种情况，避免面板「一打开就自动关闭」：
+  ///   - 进来时本来就没申请（正常发起面板）→ 不该自动关闭
+  ///   - 进来时有申请、之后没了（对方撤回/同意）→ 自动关闭
+  bool? _hadRequestAtOpen;
+
   Future<void> _run(Future<void> Function() action, {String? success}) async {
     setState(() => _busy = true);
     final ok = await runGuarded(context, action, success: success);
@@ -43,9 +49,14 @@ class _DissolveSheetState extends State<_DissolveSheet> {
     final scheme = Theme.of(context).colorScheme;
     final couple = s.couple;
     final d = couple?.dissolution;
+    _hadRequestAtOpen ??= d != null;
 
-    // 申请已经不存在了（对方撤回/同意），直接关掉
-    if (couple != null && couple.status == 'active' && d == null) {
+    // 只有「进来时本来有申请、现在申请没了」（对方撤回/同意）才自动关闭。
+    // 若进来时就没申请，那正是发起面板，必须留着。
+    if (couple != null &&
+        couple.status == 'active' &&
+        _hadRequestAtOpen == true &&
+        d == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) Navigator.of(context).maybePop();
       });

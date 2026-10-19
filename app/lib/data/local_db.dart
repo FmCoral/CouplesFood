@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../core/models.dart';
+import 'db_platform_stub.dart' if (dart.library.io) 'db_platform_io.dart';
 
 /// 本地 SQLite
 ///
@@ -22,6 +23,10 @@ class LocalDb {
   }
 
   Future<void> open() async {
+    // Windows / Linux 桌面调试：sqflite 无原生实现，切到 FFI 工厂。
+    // Android 上这是空操作，行为完全不变。
+    initDbPlatform();
+
     final dir = await getDatabasesPath();
     _db = await openDatabase(
       p.join(dir, 'couple_menu.db'),

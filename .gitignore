@@ -3,6 +3,8 @@ node_modules/
 dist/
 build/
 .gradle/
+.kotlin/
+.dart_tool/
 *.iml
 .idea/
 local.properties
@@ -11,6 +13,10 @@ local.properties
 .env
 .env.*
 !.env.example
+
+# 签名密钥：绝不入库（泄露 = 任何人都能签出假冒本 App 的更新包）
+key.properties
+app/android/app/keystore/
 
 # 日志
 *.log
